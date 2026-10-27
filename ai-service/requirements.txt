@@ -27,4 +27,6 @@ pytest==8.3.3
 httpx==0.27.2
 
 #   cd "F:\legal-document-analyzer (1)\ai-service"
-#    uvicorn main:app --reload --port 8000
+#    git commit -m "Add legal document analysis features"
+$branch = git branch --show-current
+git push -u origin $branchuvicorn main:app --reload --port 8000
