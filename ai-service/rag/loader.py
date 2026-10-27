@@ -34,6 +34,8 @@ def load_document(path: str, file_type: str) -> list[Page]:
 
 
 def _load_pdf(path: str) -> list[Page]:
+    import io
+
     import fitz  # PyMuPDF
 
     pages: list[Page] = []
@@ -50,7 +52,24 @@ def _load_pdf(path: str) -> list[Page]:
                 text = block[4].replace("-\n", "").replace("\n", " ").strip()
                 if text:
                     paragraphs.append(text)
-            pages.append(Page(index, "\n\n".join(paragraphs)))
+            extracted = "\n\n".join(paragraphs)
+            if len(extracted.strip()) < 30 and page.get_images(full=True):
+                try:
+                    import pytesseract
+                    from PIL import Image
+
+                    pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                    image = Image.open(io.BytesIO(pixmap.tobytes("png")))
+                    extracted = pytesseract.image_to_string(image).strip()
+                except ImportError as exc:
+                    raise DocumentLoadError(
+                        "OCR dependencies are unavailable. Install pytesseract and Pillow to read scanned PDFs."
+                    ) from exc
+                except Exception as exc:
+                    raise DocumentLoadError(
+                        "OCR could not read a scanned PDF page. Check that Tesseract OCR is installed and try again."
+                    ) from exc
+            pages.append(Page(index, extracted))
     return pages
 
 

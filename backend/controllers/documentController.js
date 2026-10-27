@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const Document = require('../models/Document');
 const Chat = require('../models/Chat');
 const ApiError = require('../utils/ApiError');
@@ -10,6 +11,7 @@ const logger = require('../config/logger');
 const ai = require('../services/aiClient');
 const { verifyMagicBytes } = require('../middleware/upload');
 const { buildReport } = require('../services/reportService');
+const { calculateRiskScore } = require('../services/riskScore');
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const removeFile = (p) => p && fs.promises.unlink(p).catch(() => {});
@@ -147,10 +149,17 @@ exports.analyze = asyncHandler(async (req, res) => {
       ai.analyzeRisk(doc._id, uid),
       ai.detectClauses(doc._id, uid),
     ]);
+    const score = calculateRiskScore(risk.risks, clauses.missing);
 
     doc.analysis = {
       summary,
       riskLevel: risk.risk_level,
+      riskScore: score.score,
+      riskScoreBreakdown: {
+        riskPoints: score.riskPoints,
+        missingClausePoints: score.missingClausePoints,
+        formula: score.formula,
+      },
       risks: risk.risks.map((r) => ({
         title: r.title,
         level: r.level,
@@ -159,6 +168,7 @@ exports.analyze = asyncHandler(async (req, res) => {
         clauseText: r.clause_text,
         explanation: r.explanation,
         recommendation: r.recommendation,
+        evidenceStrength: r.evidence_strength,
       })),
       clauses: clauses.clauses.map((c) => ({
         type: c.type,
@@ -182,11 +192,42 @@ exports.analyze = asyncHandler(async (req, res) => {
   }
 });
 
-exports.report = (req, res) => {
+exports.report = asyncHandler(async (req, res) => {
   const doc = req.document;
   if (doc.analysisStatus !== 'done') throw new ApiError(409, 'Analyze the document first to export a report');
-  const filename = `${path.parse(doc.originalName).name}-analysis.md`;
-  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-  res.send(buildReport(doc));
-};
+  const format = String(req.query.format || 'md').toLowerCase();
+  const report = buildReport(doc);
+  const baseName = `${path.parse(doc.originalName).name}-analysis`;
+  if (format === 'md') {
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(`${baseName}.md`)}"`);
+    await audit(req, req.user._id, 'document.report_export', { documentId: doc._id, format });
+    return res.send(report);
+  }
+  if (!['pdf', 'docx'].includes(format)) throw new ApiError(400, 'Report format must be md, pdf or docx');
+  const content = await ai.exportReport(format, report);
+  res.setHeader('Content-Type', format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(`${baseName}.${format}`)}"`);
+  await audit(req, req.user._id, 'document.report_export', { documentId: doc._id, format });
+  return res.send(content);
+});
+
+exports.compare = asyncHandler(async (req, res) => {
+  const { documentId, otherDocumentId } = req.body;
+  if (!mongoose.isValidObjectId(documentId) || !mongoose.isValidObjectId(otherDocumentId) || documentId === otherDocumentId) {
+    throw new ApiError(400, 'Choose two different valid documents');
+  }
+  const docs = await Document.find({ _id: { $in: [documentId, otherDocumentId] }, userId: req.user._id })
+    .select('_id originalName status');
+  if (docs.length !== 2) throw new ApiError(404, 'Document not found');
+  if (docs.some((doc) => doc.status !== 'ready')) throw new ApiError(409, 'Both documents must finish processing before comparison');
+
+  const result = await ai.compareDocuments(documentId, otherDocumentId, req.user._id);
+  await audit(req, req.user._id, 'document.compare', { documentIds: [documentId, otherDocumentId] });
+  res.json({
+    success: true,
+    olderDocument: docs.find((doc) => String(doc._id) === documentId).originalName,
+    newerDocument: docs.find((doc) => String(doc._id) === otherDocumentId).originalName,
+    ...result,
+  });
+});

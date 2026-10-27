@@ -4,16 +4,16 @@
 
 :root {
   color-scheme: light;
-  --paper: 218 219 193;
-  --surface: 239 239 221;
-  --hover-surface: 233 237 215;
-  --ink: 39 39 32;
-  --ink-soft: 76 76 65;
-  --muted: 119 120 106;
-  --rule: 199 200 171;
-  --seal: 22 199 99;
-  --seal-dark: 13 157 75;
-  --seal-tint: 215 234 205;
+  --paper: 246 248 252;
+  --surface: 255 255 255;
+  --hover-surface: 240 246 252;
+  --ink: 15 23 42;
+  --ink-soft: 51 65 85;
+  --muted: 100 116 139;
+  --rule: 220 228 239;
+  --seal: 8 145 178;
+  --seal-dark: 14 116 144;
+  --seal-tint: 207 250 254;
   --mark: 255 232 153;
   --high: 184 50 42;
   --high-tint: 251 234 232;
@@ -25,16 +25,16 @@
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --paper: 13 14 16;
-  --surface: 30 31 33;
-  --hover-surface: 35 37 41;
-  --ink: 238 240 244;
-  --ink-soft: 211 216 225;
-  --muted: 151 160 174;
-  --rule: 49 51 55;
-  --seal: 67 139 255;
-  --seal-dark: 39 105 226;
-  --seal-tint: 32 43 61;
+  --paper: 9 14 26;
+  --surface: 17 24 39;
+  --hover-surface: 25 35 55;
+  --ink: 226 232 240;
+  --ink-soft: 203 213 225;
+  --muted: 148 163 184;
+  --rule: 51 65 85;
+  --seal: 34 211 238;
+  --seal-dark: 6 182 212;
+  --seal-tint: 8 47 73;
   --mark: 255 224 102;
   --high: 248 105 105;
   --high-tint: 69 36 39;
@@ -111,6 +111,44 @@ body::after {
 [data-theme="dark"] .bg-white { background-color: rgb(var(--surface)); }
 [data-theme="dark"] .border-white { border-color: rgb(var(--rule)); }
 input, textarea, select { color-scheme: inherit; }
+
+.sidebar-surface { color: #052e16; }
+.sidebar-link {
+  position: relative;
+  transform: translateX(0);
+  transition: transform 180ms cubic-bezier(.2,.8,.2,1), box-shadow 180ms ease,
+    background-color 180ms ease, color 180ms ease;
+  color: #14532d;
+}
+.sidebar-link:hover, .sidebar-link:focus-visible {
+  z-index: 1;
+  background-color: #dcfce7;
+  color: #052e16;
+  box-shadow: 0 8px 18px rgb(22 101 52 / 0.16), 0 0 0 1px rgb(22 101 52 / 0.1);
+  transform: translateX(5px) scale(1.025);
+}
+.sidebar-link-active { background-color: #bbf7d0; color: #052e16; }
+.sidebar-muted { color: #15803d; }
+.sidebar-user-name { color: #052e16; }
+.sidebar-signout { color: #14532d; }
+.sidebar-signout:hover { background-color: #dcfce7; color: #052e16; }
+
+[data-theme="dark"] .sidebar-surface { border-color: rgb(51 65 85); background-color: #101827; color: white; }
+[data-theme="dark"] .sidebar-divider { border-color: rgb(51 65 85); }
+[data-theme="dark"] .sidebar-link { color: rgb(226 232 240); }
+[data-theme="dark"] .sidebar-link:hover, [data-theme="dark"] .sidebar-link:focus-visible {
+  background-color: rgb(255 255 255 / 0.1);
+  color: white;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 0.25), 0 0 18px rgb(34 211 238 / 0.12);
+}
+[data-theme="dark"] .sidebar-link-active { background-color: rgb(103 232 249 / 0.15); color: rgb(165 243 252); }
+[data-theme="dark"] .sidebar-muted { color: rgb(148 163 184); }
+[data-theme="dark"] .sidebar-status { border-color: rgb(103 232 249 / 0.2); background-color: rgb(103 232 249 / 0.05); }
+[data-theme="dark"] .sidebar-status p:first-child { color: rgb(207 250 254); }
+[data-theme="dark"] .sidebar-status p:last-child { color: rgb(148 163 184); }
+[data-theme="dark"] .sidebar-user-name { color: white; }
+[data-theme="dark"] .sidebar-signout { color: rgb(226 232 240); }
+[data-theme="dark"] .sidebar-signout:hover { background-color: rgb(255 255 255 / 0.1); color: white; }
 
 /* Responsive, GPU-friendly hover feedback: gentle lift, scale and theme-colored glow. */
 .panel, .nav-option, .btn, a, button, [role="button"], input, textarea, select,

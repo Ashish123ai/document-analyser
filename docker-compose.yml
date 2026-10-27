@@ -1,5 +1,5 @@
 # Run everything:  cp .env.example .env  (fill in secrets)  &&  docker compose up --build
-# App: http://localhost:8080
+# App: http://localhost:8081 (set FRONTEND_PORT to choose another host port)
 services:
   mongo:
     image: mongo:7
@@ -11,11 +11,15 @@ services:
     restart: unless-stopped
     environment:
       AI_INTERNAL_KEY: ${AI_INTERNAL_KEY}
-      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
-      LLM_MODEL: ${LLM_MODEL:-claude-sonnet-5-5}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-50}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-64}
+      RERANKER_MODEL: ${RERANKER_MODEL:-none}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_MODEL: ${LLM_MODEL:-openai/gpt-oss-20b}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.groq.com/openai/v1}
     volumes: [ai_data:/app/data]
     # Not published to the host: only the backend can reach it.
 
@@ -29,10 +33,12 @@ services:
       MONGO_URI: mongodb://mongo:27017/legal_analyzer
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      CLIENT_URL: ${CLIENT_URL:-http://localhost:8080}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:8081}
       AI_SERVICE_URL: http://ai-service:8000
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-600000}
       AI_INTERNAL_KEY: ${AI_INTERNAL_KEY}
       UPLOAD_DIR: /app/uploads
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
@@ -43,7 +49,7 @@ services:
     build: ./frontend
     restart: unless-stopped
     depends_on: [backend]
-    ports: ["8080:80"]
+    ports: ["${FRONTEND_PORT:-8081}:80"]
 
 volumes:
   mongo_data:

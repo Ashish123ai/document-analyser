@@ -9,6 +9,7 @@ router.use(protect);
 
 router.get('/', c.list);
 router.post('/', uploadLimiter, upload.single('file'), c.upload);
+router.post('/compare', aiLimiter, c.compare);
 
 router.get('/:id', loadOwnedDocument(), c.get);
 router.get('/:id/download', loadOwnedDocument('id', { withPath: true }), c.download);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { FileText, Search } from 'lucide-react';
 import UploadZone from '../components/UploadZone.jsx';
 import DocumentRow from '../components/DocumentRow.jsx';
@@ -79,11 +80,18 @@ export default function Documents() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl">Documents</h1>
-        <p className="mt-1 text-sm text-muted">Only you can see the documents you upload.</p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl">Documents</h1>
+            <p className="mt-1 text-sm text-muted">Only you can see the documents you upload.</p>
+          </div>
+          <Link to="/app/compare" className="btn-secondary">Compare documents</Link>
+        </div>
       </div>
 
-      <UploadZone compact={Boolean(docs?.length)} onUploaded={() => { setPage(1); load({ page: 1 }); }} />
+      <div id="upload">
+        <UploadZone compact={Boolean(docs?.length)} onUploaded={() => { setPage(1); load({ page: 1 }); }} />
+      </div>
 
       <section className="panel">
         <div className="flex flex-col gap-3 border-b border-rule p-4 sm:flex-row sm:items-center">

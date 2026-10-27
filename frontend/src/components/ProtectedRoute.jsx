@@ -12,5 +12,5 @@ export default function ProtectedRoute() {
 export function PublicOnlyRoute() {
   const { user, loading } = useAuth();
   if (loading) return <FullPageSpinner />;
-  return user ? <Navigate to="/dashboard" replace /> : <Outlet />;
+  return user ? <Navigate to="/app/dashboard" replace /> : <Outlet />;
 }

@@ -4,15 +4,16 @@ import os
 import re
 import secrets
 import tempfile
+from difflib import SequenceMatcher
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from config import settings
 from models.schemas import (
-    AskRequest, AskResponse, ClauseResponse, DocRef, EmbedRequest, ProcessResponse,
-    RetrieveRequest, RiskResponse, Source,
+    AskRequest, AskResponse, ClauseResponse, CompareRequest, DocRef, EmbedRequest, ProcessResponse,
+    ReportExportRequest, RetrieveRequest, RiskResponse, Source,
 )
 from rag import vector_store
 from rag.embeddings import embed_texts, warm_up
@@ -28,12 +29,14 @@ log = logging.getLogger("ai-service")
 ALLOWED_TYPES = {"pdf", "docx", "txt"}
 SUMMARY_REQUEST = re.compile(
     r"\b(?:summari[sz](?:e|ation)|summaris(?:e|ation))\b"
-    r"|\b(?:explain|give|provide|write|create|make)\s+(?:me\s+)?(?:a\s+)?(?:brief\s+)?(?:summary|overview)\b"
-    r"|\b(?:summary|overview)\s+(?:of|for)\s+(?:the\s+|this\s+|my\s+|uploaded\s+)?(?:document|file|resume|contract)\b"
+    r"|\b(?:explain|give|provide|write|create|make)\s+(?:me\s+)?(?:a\s+)?(?:(?:brief|short|detailed|executive|overall|full|quick)\s+)?(?:summary|overview)\b"
+    r"|\b(?:(?:brief|short|detailed|executive|overall|full|quick)\s+)?(?:summary|overview)\s+(?:of|for|about)\s+(?:the\s+|this\s+|my\s+|uploaded\s+)?(?:document|file|resume|contract)\b"
+    r"|^\s*(?:(?:brief|short|detailed|executive|overall|full|quick)\s+)?(?:summary|overview)\s*[.!?]*\s*$"
     r"|\b(?:what is|what's)\s+(?:this|the)\s+(?:document|file|resume|contract)\s+about\b"
     r"|\bkey\s+points\s+(?:of|from)\s+(?:the\s+|this\s+|my\s+|uploaded\s+)?(?:document|file|resume|contract)\b",
     re.IGNORECASE,
 )
+SUMMARY_PAGE_SCOPE = re.compile(r"\bpages?\s+(\d+)(?:\s*(?:-|to|through)\s*(\d+))?\b", re.IGNORECASE)
 SKILL_REQUEST = re.compile(r"\bskills?\b|\bcompetenc(?:y|ies)\b", re.IGNORECASE)
 EMAIL_QUESTION = re.compile(r"\b(?:e-?mail|mail\s+address)\b", re.IGNORECASE)
 EMAIL_ADDRESS = re.compile(r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+", re.IGNORECASE)
@@ -215,7 +218,29 @@ def ask(req: AskRequest):
 
     if SUMMARY_REQUEST.search(req.question):
         pages = text_store.load_pages(req.user_id, req.document_id)
-        answer = summarizer.summarize_for_chat(pages)
+        scope = SUMMARY_PAGE_SCOPE.search(req.question)
+        if scope:
+            start_page = int(scope.group(1))
+            end_page = int(scope.group(2) or start_page)
+            if end_page < start_page:
+                start_page, end_page = end_page, start_page
+            selected_pages = [p for p in pages if start_page <= p.number <= end_page]
+            if not selected_pages:
+                last_page = max((p.number for p in pages), default=0)
+                answer = f"Page {start_page} is outside this document's page range (1–{last_page})."
+                return AskResponse(
+                    answer=answer,
+                    found=False,
+                    standalone_question=req.question,
+                    sources=[],
+                )
+            scope_label = (
+                f"page {start_page}" if start_page == end_page
+                else f"pages {start_page}–{end_page}"
+            )
+            answer = summarizer.summarize_for_chat(selected_pages, scope_label=scope_label)
+        else:
+            answer = summarizer.summarize_for_chat(pages)
         return AskResponse(
             answer=answer or "I could not find readable text in the uploaded document.",
             found=bool(answer),
@@ -278,6 +303,119 @@ def analyze_risk(req: DocRef):
 @app.post("/detect-clauses", response_model=ClauseResponse, dependencies=[Depends(require_key)])
 def detect_clauses(req: DocRef):
     return clause_detector.detect(text_store.load_pages(req.user_id, req.document_id))
+
+
+@app.post("/compare-documents", dependencies=[Depends(require_key)])
+def compare_documents(req: CompareRequest):
+    if req.document_id == req.other_document_id:
+        raise HTTPException(400, "Choose two different documents")
+    old_pages = text_store.load_pages(req.user_id, req.document_id)
+    new_pages = text_store.load_pages(req.user_id, req.other_document_id)
+    old_text = "\n".join(page.text for page in old_pages)
+    new_text = "\n".join(page.text for page in new_pages)
+    if max(len(old_text), len(new_text)) > 500000:
+        raise HTTPException(413, "Documents are too large to compare in one request")
+
+    old_lines = [line.strip() for line in old_text.splitlines() if line.strip()]
+    new_lines = [line.strip() for line in new_text.splitlines() if line.strip()]
+    opcodes = [
+        opcode for opcode in SequenceMatcher(a=old_lines, b=new_lines).get_opcodes()
+        if opcode[0] != "equal"
+    ]
+    changes = []
+    for tag, i1, i2, j1, j2 in opcodes[:100]:
+        changes.append({
+            "type": tag,
+            "old_text": "\n".join(old_lines[i1:i2])[:3000],
+            "new_text": "\n".join(new_lines[j1:j2])[:3000],
+        })
+
+    old_risk = risk_analyzer.analyze(old_pages)
+    new_risk = risk_analyzer.analyze(new_pages)
+    old_by_category = {risk["category"]: risk for risk in old_risk["risks"]}
+    new_by_category = {risk["category"]: risk for risk in new_risk["risks"]}
+    finding_details = lambda findings: [
+        {
+            "category": category,
+            "title": finding["title"],
+            "level": finding["level"],
+            "explanation": finding["explanation"],
+        }
+        for category, finding in findings.items()
+    ]
+    return {
+        "changes": changes,
+        "risk_change": {
+            "before": old_risk["risk_level"],
+            "after": new_risk["risk_level"],
+            "added_findings": finding_details({k: v for k, v in new_by_category.items() if k not in old_by_category}),
+            "removed_findings": finding_details({k: v for k, v in old_by_category.items() if k not in new_by_category}),
+        },
+        "truncated": len(opcodes) > 100,
+    }
+
+
+@app.post("/export-report", dependencies=[Depends(require_key)])
+def export_report(req: ReportExportRequest):
+    import io
+    from html import escape
+
+    if req.format == "docx":
+        from docx import Document
+
+        output = io.BytesIO()
+        document = Document()
+        for line in req.report_text.splitlines():
+            if line.startswith("# "):
+                document.add_heading(line[2:], level=1)
+            elif line.startswith("## "):
+                document.add_heading(line[3:], level=2)
+            elif line.startswith("### "):
+                document.add_heading(line[4:], level=3)
+            elif line.startswith("- "):
+                document.add_paragraph(line[2:], style="List Bullet")
+            elif line.startswith("> "):
+                document.add_paragraph(line[2:], style="Quote")
+            elif line.strip():
+                document.add_paragraph(line.replace("**", ""))
+        document.save(output)
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    else:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import inch
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
+        output = io.BytesIO()
+        styles = getSampleStyleSheet()
+        body = ParagraphStyle("Body", parent=styles["BodyText"], leading=14, spaceAfter=7)
+        story = []
+        for line in req.report_text.splitlines():
+            if not line.strip():
+                story.append(Spacer(1, 5))
+                continue
+            level = 0
+            while level < len(line) and line[level] == "#":
+                level += 1
+            if level:
+                style = styles["Title"] if level == 1 else styles["Heading2"] if level == 2 else styles["Heading3"]
+                content = line[level:].strip()
+                story.append(Paragraph(escape(content), style))
+            else:
+                content = line.strip()
+                is_bullet = content.startswith("- ")
+                if content.startswith("- "):
+                    content = content[2:]
+                elif content.startswith("> "):
+                    content = content[2:]
+                content = escape(content).replace("**", "")
+                if is_bullet:
+                    content = "&#8226; " + content
+                story.append(Paragraph(content, body))
+        SimpleDocTemplate(output, pagesize=letter, rightMargin=0.7 * inch, leftMargin=0.7 * inch,
+                          topMargin=0.7 * inch, bottomMargin=0.7 * inch).build(story)
+        media_type = "application/pdf"
+    return Response(output.getvalue(), media_type=media_type)
 
 
 @app.delete("/documents/{document_id}", dependencies=[Depends(require_key)])

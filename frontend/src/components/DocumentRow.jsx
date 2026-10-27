@@ -13,7 +13,7 @@ export default function DocumentRow({ doc, onDelete, onRetry }) {
           <FileText className="h-5 w-5" strokeWidth={1.6} />
         </span>
         <div className="min-w-0">
-          <Link to={`/documents/${doc._id}`} className="block truncate font-medium hover:text-seal hover:underline">{doc.originalName}</Link>
+          <Link to={`/app/documents/${doc._id}`} className="block truncate font-medium hover:text-seal hover:underline">{doc.originalName}</Link>
           <p className="text-[13px] text-muted">
             {doc.fileType.toUpperCase()}, {formatBytes(doc.size)}
             {ready && doc.pageCount ? `, ${doc.pageCount} page${doc.pageCount > 1 ? 's' : ''}` : ''}, uploaded {formatDate(doc.createdAt)}
@@ -27,7 +27,7 @@ export default function DocumentRow({ doc, onDelete, onRetry }) {
         {doc.analysis?.riskLevel ? <RiskBadge level={doc.analysis.riskLevel} /> : ready && <span className="text-xs text-muted">Not analyzed</span>}
         <div className="flex items-center gap-1">
           {ready && (
-            <Link to={`/chat/${doc._id}`} className="btn-secondary btn-sm"><MessageSquare className="h-3.5 w-3.5" aria-hidden /> Ask</Link>
+            <Link to={`/app/chat/${doc._id}`} className="btn-secondary btn-sm"><MessageSquare className="h-3.5 w-3.5" aria-hidden /> Ask</Link>
           )}
           {doc.status === 'failed' && (
             <button onClick={() => onRetry(doc)} className="btn-secondary btn-sm"><RotateCw className="h-3.5 w-3.5" aria-hidden /> Retry processing</button>

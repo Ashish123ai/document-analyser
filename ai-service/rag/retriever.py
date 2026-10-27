@@ -1,5 +1,6 @@
 """Step 6: retrieval. Dense vector search re-ranked with a small keyword-overlap signal (hybrid)."""
 import re
+import threading
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -18,6 +19,9 @@ _STOPWORDS = {
 
 DENSE_WEIGHT = 0.9
 LEXICAL_WEIGHT = 0.1
+RERANKER_WEIGHT = 0.35
+_reranker = None
+_reranker_lock = threading.Lock()
 
 QUERY_EXPANSION_SYSTEM = """Rewrite the user's document question as up to three short alternative search queries.
 Use likely synonyms and equivalent ways the document may express the same fact. Keep the intent
@@ -35,6 +39,38 @@ class RetrievedChunk:
 
 def _keywords(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2 and w not in _STOPWORDS}
+
+
+def _get_reranker():
+    global _reranker
+    name = settings.reranker_model.strip()
+    if not name or name.lower() in {"none", "off", "false"}:
+        return None
+    if _reranker is None:
+        with _reranker_lock:
+            if _reranker is None:
+                from sentence_transformers import CrossEncoder
+                _reranker = CrossEncoder(name)
+    return _reranker
+
+
+def _rerank(query: str, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    if not chunks:
+        return chunks
+    try:
+        model = _get_reranker()
+        if model is None:
+            return chunks
+        logits = model.predict([(query, chunk.text) for chunk in chunks], show_progress_bar=False)
+        import math
+        for chunk, logit in zip(chunks, logits):
+            probability = 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, float(logit)))))
+            chunk.score = round((1.0 - RERANKER_WEIGHT) * chunk.score + RERANKER_WEIGHT * probability, 4)
+        return sorted(chunks, key=lambda chunk: chunk.score, reverse=True)
+    except Exception as exc:
+        import logging
+        logging.getLogger("ai-service.retriever").warning("Cross-encoder reranking unavailable; using hybrid ranking: %s", exc)
+        return chunks
 
 
 def _query_variants(query: str) -> list[str]:
@@ -111,4 +147,5 @@ def retrieve(
             add_candidates(expanded)
             scored = rank_candidates([query, *expanded])
 
-    return [c for c in scored[:top_k] if c.score >= min_score]
+    reranked = _rerank(query, scored[: max(top_k * 3, top_k)])
+    return [c for c in reranked if c.score >= min_score][:top_k]

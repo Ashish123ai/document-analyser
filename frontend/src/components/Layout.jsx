@@ -1,98 +1,191 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { FileText, History, LayoutDashboard, LogOut, Menu, MessageSquare, Moon, Sun, UserCircle, X } from 'lucide-react';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import {
+  FileText,
+  History,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  MessageSquare,
+  Moon,
+  Scale,
+  Sun,
+  UserCircle,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useTheme } from '../context/ThemeContext.jsx';
 
-const NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/documents', label: 'Documents', icon: FileText },
-  { to: '/chat', label: 'Ask a question', icon: MessageSquare },
-  { to: '/history', label: 'History', icon: History },
-  { to: '/profile', label: 'Profile', icon: UserCircle },
+const APP_LINKS = [
+  { to: '/app/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/app/analyze#upload', label: 'Analyze', icon: FileText },
+  { to: '/app/compare', label: 'Compare', icon: Scale },
+  { to: '/app/documents', label: 'Archive', icon: History },
+];
+
+const TOOL_LINKS = [
+  { to: '/app/chat', label: 'Ask a contract', icon: MessageSquare },
+  { to: '/app/history', label: 'Question history', icon: History },
+  { to: '/app/profile', label: 'Account settings', icon: UserCircle },
+];
+
+const INSIGHT_LINKS = [
+  { to: '/app/dashboard', label: 'Risk overview', icon: LayoutDashboard },
+  { to: '/app/history', label: 'Recent questions', icon: MessageSquare },
 ];
 
 export const Logo = ({ light = false }) => (
-  <span className="flex items-center gap-2.5">
-    <span className={`grid h-8 w-8 place-items-center rounded-md font-serif text-lg leading-none ${light ? 'bg-mark text-ink' : 'bg-ink text-mark'}`} aria-hidden>§</span>
-    <span className={`text-[15px] font-semibold tracking-tight ${light ? 'text-white' : 'text-ink'}`}>Legal Analyzer</span>
+  <span className="flex shrink-0 items-center gap-2.5 whitespace-nowrap">
+    <span className={`grid h-8 w-8 place-items-center rounded-md font-serif text-lg leading-none ${light ? 'bg-cyan-300 text-slate-950' : 'bg-slate-900 text-cyan-300'}`} aria-hidden>
+      §
+    </span>
+    <span className={`text-[15px] font-semibold tracking-[0.08em] ${light ? 'text-white' : 'text-ink'}`}>
+      INSIGHTLENS
+    </span>
   </span>
 );
 
-export default function Layout() {
-  const { user, logout } = useAuth();
-  const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useState(() => window.localStorage.getItem('legal-analyzer-theme') || 'dark');
-  const location = useLocation();
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem('legal-analyzer-theme', theme);
-  }, [theme]);
-
-  const themeButton = (
+function ThemeButton({ darkSurface = false }) {
+  const { theme, toggleTheme } = useTheme();
+  const Icon = theme === 'dark' ? Sun : Moon;
+  return (
     <button
       type="button"
-      onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
-      className="theme-toggle btn-ghost btn-sm !px-2.5"
+      onClick={toggleTheme}
+      className={`btn-ghost btn-sm !px-2.5 ${darkSurface ? 'text-slate-200 hover:text-white' : ''}`}
       aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
       aria-pressed={theme === 'dark'}
       title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
     >
-      {theme === 'dark' ? <Sun className="h-4 w-4" aria-hidden /> : <Moon className="h-4 w-4" aria-hidden />}
-      <span className="hidden sm:inline lg:hidden">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+      <Icon className="h-4 w-4" aria-hidden />
     </button>
   );
+}
+
+function LinkList({ links, close, currentPath }) {
+  return links.map(({ to, label, icon: Icon }) => {
+    const [path] = to.split('#');
+    const active = currentPath === path
+      || currentPath.startsWith(`${path}/`)
+      || (path === '/app/documents' && currentPath.startsWith('/app/documents/'))
+      || (path === '/app/chat' && currentPath.startsWith('/app/chat/'));
+    return (
+      <NavLink
+        key={to}
+        to={to}
+        onClick={close}
+        aria-current={active ? 'page' : undefined}
+        className={`sidebar-link flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors ${
+          active ? 'sidebar-link-active' : ''
+        }`}
+      >
+        <Icon className="h-4 w-4 shrink-0" aria-hidden />
+        {label}
+      </NavLink>
+    );
+  });
+}
+
+export default function Layout() {
+  const { user, logout } = useAuth();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const location = useLocation();
+  const closeMenus = () => {
+    setDrawerOpen(false);
+  };
+
+  useEffect(() => {
+    closeMenus();
+  }, [location.pathname]);
 
   const sidebar = (
-    <nav className="flex h-full flex-col" aria-label="Main">
-      <div className="flex items-center justify-between gap-2 px-5 py-5"><Logo />{themeButton}</div>
-      <ul className="flex-1 space-y-0.5 px-3">
-        {NAV.map(({ to, label, icon: Icon }) => (
-          <li key={to}>
-            <NavLink
-              to={to}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) =>
-                `nav-option flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${isActive ? 'bg-seal-tint text-seal' : 'text-muted hover:bg-paper hover:text-ink'}`
-              }
-            >
-              <Icon className="h-4 w-4" aria-hidden /> {label}
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-      <div className="border-t border-rule p-4">
-        <p className="truncate text-sm font-medium">{user?.name}</p>
-        <p className="truncate text-[13px] text-muted">{user?.email}</p>
-        <button onClick={logout} className="btn-ghost btn-sm -ml-3 mt-2"><LogOut className="h-4 w-4" aria-hidden /> Sign out</button>
+    <nav className="flex h-full flex-col" aria-label="Main navigation">
+      <div className="sidebar-divider border-b border-emerald-200 px-5 py-5">
+        <Link to="/app/dashboard" aria-label="InsightLens dashboard" onClick={closeMenus}>
+          <Logo light />
+        </Link>
+        <p className="sidebar-muted mt-2 pl-10 font-mono text-[10px] uppercase tracking-[0.16em]">Legal risk workspace</p>
+      </div>
+      <div className="flex-1 overflow-y-auto px-3 py-5">
+        <p className="sidebar-muted px-3 pb-2 font-mono text-[10px] uppercase tracking-[0.16em]">Workspace</p>
+        <div className="space-y-1">
+          <LinkList links={APP_LINKS} close={closeMenus} currentPath={location.pathname} />
+        </div>
+        <p className="sidebar-muted px-3 pb-2 pt-7 font-mono text-[10px] uppercase tracking-[0.16em]">Tools</p>
+        <div className="space-y-1">
+          <LinkList links={TOOL_LINKS} close={closeMenus} currentPath={location.pathname} />
+        </div>
+        <p className="sidebar-muted px-3 pb-2 pt-7 font-mono text-[10px] uppercase tracking-[0.16em]">Insights</p>
+        <div className="space-y-1">
+          <LinkList links={INSIGHT_LINKS} close={closeMenus} currentPath={location.pathname} />
+        </div>
+      </div>
+      <div className="sidebar-divider border-t border-emerald-200 p-4">
+        <div className="sidebar-status mb-3 rounded-md border border-emerald-200 bg-emerald-100 px-3 py-2">
+          <p className="text-xs font-medium text-emerald-950">Account connected</p>
+          <p className="mt-0.5 text-[10px] text-emerald-800">Private document workspace</p>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="sidebar-user-name truncate text-sm font-medium">{user?.name}</p>
+            <p className="sidebar-muted truncate text-xs">{user?.email}</p>
+          </div>
+          <ThemeButton darkSurface />
+        </div>
+        <button type="button" onClick={logout} className="sidebar-signout btn-ghost btn-sm -ml-1 mt-2">
+          <LogOut className="h-4 w-4" aria-hidden /> Sign out
+        </button>
       </div>
     </nav>
   );
 
   return (
     <div className="min-h-screen lg:flex">
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded focus:bg-white focus:px-3 focus:py-2">Skip to content</a>
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[60] focus:rounded focus:bg-white focus:px-3 focus:py-2">
+        Skip to content
+      </a>
 
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 border-r border-rule bg-white lg:block">{sidebar}</aside>
+      <aside className="sidebar-surface sticky top-0 hidden h-screen w-64 shrink-0 border-r border-emerald-200 bg-[#eff8ef] lg:block">
+        {sidebar}
+      </aside>
 
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-rule bg-white px-4 py-3 lg:hidden">
-        <Logo />
-        <div className="flex items-center gap-2">{themeButton}<button onClick={() => setOpen(true)} className="btn-ghost p-2" aria-label="Open menu"><Menu className="h-5 w-5" /></button></div>
-      </header>
-
-      {open && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-ink/50" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-0 h-full w-64 bg-white">
-            <button onClick={() => setOpen(false)} className="btn-ghost absolute right-2 top-3 p-2" aria-label="Close menu"><X className="h-5 w-5" /></button>
-            {sidebar}
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-rule bg-white/95 px-4 backdrop-blur lg:hidden">
+          <Link to="/app/dashboard" aria-label="InsightLens dashboard" onClick={closeMenus}><Logo /></Link>
+          <div className="flex items-center gap-2">
+            <ThemeButton />
+            <button
+              type="button"
+              onClick={() => setDrawerOpen((current) => !current)}
+              className="btn-ghost p-2"
+              aria-label={drawerOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={drawerOpen}
+              aria-controls="mobile-navigation"
+            >
+              {drawerOpen ? <X className="h-5 w-5" aria-hidden /> : <Menu className="h-5 w-5" aria-hidden />}
+            </button>
           </div>
-        </div>
-      )}
+        </header>
+        {drawerOpen && (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <button type="button" className="absolute inset-0 bg-slate-950/50" aria-label="Close navigation menu" onClick={closeMenus} />
+            <aside id="mobile-navigation" className="sidebar-surface absolute left-0 top-0 h-full w-72 max-w-[85vw] shadow-2xl" aria-label="Mobile navigation">
+              <button type="button" onClick={closeMenus} className="btn-ghost absolute right-3 top-3 p-2 text-slate-100" aria-label="Close navigation menu">
+                <X className="h-5 w-5" aria-hidden />
+              </button>
+              {sidebar}
+            </aside>
+          </div>
+        )}
 
-      <main id="main" key={location.pathname.split('/')[1]} className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-9">
-        <div className="mx-auto max-w-5xl"><Outlet /></div>
-      </main>
+        <main id="main" key={location.pathname.split('/')[2]} className="mx-auto min-w-0 max-w-[1440px] px-4 py-6 sm:px-6 sm:py-9">
+          <div className="mx-auto max-w-6xl"><Outlet /></div>
+        </main>
+
+        <footer className="border-t border-rule px-4 py-5 text-center text-xs text-muted">
+          AI-generated information only. InsightLens is not a law firm and does not provide legal advice.
+        </footer>
+      </div>
     </div>
   );
 }

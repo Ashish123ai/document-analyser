@@ -42,6 +42,23 @@ function RiskBar({ counts }) {
   );
 }
 
+function ScoreDistribution({ buckets }) {
+  const entries = Object.entries(buckets || {});
+  const max = Math.max(1, ...entries.map(([, count]) => count));
+  if (!entries.some(([, count]) => count)) return <p className="text-sm text-muted">Analyze documents to see the risk-score distribution.</p>;
+  return (
+    <div className="flex h-32 items-end gap-3" role="img" aria-label="Risk score distribution across analyzed documents">
+      {entries.map(([label, count]) => (
+        <div key={label} className="flex h-full flex-1 flex-col justify-end gap-1 text-center">
+          <span className="text-xs tabular-nums text-muted">{count}</span>
+          <div className="min-h-1 rounded-t bg-seal" style={{ height: `${Math.max(count ? 8 : 0, (count / max) * 72)}%` }} />
+          <span className="text-[11px] text-muted">{label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
@@ -64,7 +81,7 @@ export default function Dashboard() {
           <h1 className="text-2xl">Welcome back, {first}</h1>
           <p className="mt-1 text-sm text-muted">Here is where your documents stand.</p>
         </div>
-        <Link to="/documents" className="btn-primary">Upload a document</Link>
+        <Link to="/app/analyze" className="btn-primary">Upload a document</Link>
       </div>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Summary figures">
@@ -72,21 +89,29 @@ export default function Dashboard() {
         <Figure value={stats.analyzed} label="Analyzed" />
         <Figure value={stats.questions} label="Questions asked" />
         <Figure value={stats.risksFound} label="Risks flagged" note={`${stats.risksByLevel.high} high`} />
+        <Figure value={stats.averageRiskScore ?? '—'} label="Average risk score" note="Out of 100 · analyzed documents" />
       </section>
 
-      <section className="panel p-6">
-        <h2 className="section-title mb-4">Risks across your documents</h2>
-        <RiskBar counts={stats.risksByLevel} />
+      <section className="grid gap-6 lg:grid-cols-2">
+        <div className="panel p-6">
+          <h2 className="section-title mb-4">Risks across your documents</h2>
+          <RiskBar counts={stats.risksByLevel} />
+        </div>
+        <div className="panel p-6">
+          <h2 className="section-title mb-4">Risk score distribution</h2>
+          <ScoreDistribution buckets={stats.riskScoreBuckets} />
+          <p className="mt-3 text-xs text-muted">Scores use the project’s explicit weighted screening formula; they are not legal risk probabilities.</p>
+        </div>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="panel">
           <div className="flex items-center justify-between border-b border-rule px-5 py-3">
             <h2 className="section-title">Recent documents</h2>
-            <Link to="/documents" className="text-sm text-seal hover:underline">View all</Link>
+            <Link to="/app/documents" className="text-sm text-seal hover:underline">View all</Link>
           </div>
           {recentDocuments.length === 0 ? (
-            <EmptyState icon={FileText} title="No documents yet" action={<Link to="/documents" className="btn-primary btn-sm">Upload your first contract</Link>}>
+            <EmptyState icon={FileText} title="No documents yet" action={<Link to="/app/analyze" className="btn-primary btn-sm">Upload your first contract</Link>}>
               Upload a PDF, DOCX or TXT file to get a summary, risk review and answers to your questions.
             </EmptyState>
           ) : (
@@ -94,7 +119,7 @@ export default function Dashboard() {
               {recentDocuments.map((d) => (
                 <li key={d._id} className="flex items-center justify-between gap-3 px-5 py-3">
                   <div className="min-w-0">
-                    <Link to={`/documents/${d._id}`} className="block truncate font-medium hover:text-seal hover:underline">{d.originalName}</Link>
+                    <Link to={`/app/documents/${d._id}`} className="block truncate font-medium hover:text-seal hover:underline">{d.originalName}</Link>
                     <p className="text-[13px] text-muted">{timeAgo(d.createdAt)}</p>
                   </div>
                   {d.analysis?.riskLevel ? <RiskBadge level={d.analysis.riskLevel} /> : <StatusPill status={d.status} />}
@@ -107,7 +132,7 @@ export default function Dashboard() {
         <section className="panel">
           <div className="flex items-center justify-between border-b border-rule px-5 py-3">
             <h2 className="section-title">Recent questions</h2>
-            <Link to="/history" className="text-sm text-seal hover:underline">View history</Link>
+            <Link to="/app/history" className="text-sm text-seal hover:underline">View history</Link>
           </div>
           {recentQuestions.length === 0 ? (
             <EmptyState icon={MessageSquare} title="No questions yet">
@@ -117,7 +142,7 @@ export default function Dashboard() {
             <ul className="divide-y divide-rule">
               {recentQuestions.map((q) => (
                 <li key={q.id} className="px-5 py-3">
-                  <Link to={q.documentId ? `/chat/${q.documentId}` : '/history'} className="block truncate font-medium hover:text-seal hover:underline">{q.question}</Link>
+                  <Link to={q.documentId ? `/app/chat/${q.documentId}` : '/app/history'} className="block truncate font-medium hover:text-seal hover:underline">{q.question}</Link>
                   <p className="truncate text-[13px] text-muted">{q.documentName}, {timeAgo(q.createdAt)}</p>
                 </li>
               ))}

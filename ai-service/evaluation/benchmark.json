@@ -1,0 +1,29 @@
+[
+  {
+    "id": "sample-lease",
+    "text": "Residential Lease Agreement\n\nThe Landlord shall rent the premises to the Tenant for twelve months.\n\nRent. The Tenant shall pay rent of Rs. 25,000 each month by the fifth day.\n\nTermination. Either party may terminate this lease by giving thirty days written notice.\n\nGoverning Law. This agreement is governed by the laws of the State of Example.",
+    "expected_clauses": ["payment", "termination", "governing_law"],
+    "retrieval": [
+      {"query": "How much rent is due each month?", "expected_text": "Rs. 25,000"},
+      {"query": "How many days notice ends the lease?", "expected_text": "thirty days"}
+    ]
+  },
+  {
+    "id": "sample-nda",
+    "text": "Mutual Non-Disclosure Agreement\n\nConfidential Information includes business plans, customer lists, and technical materials shared by either party.\n\nConfidentiality. The Recipient shall not disclose confidential information except to employees who need it for this agreement.\n\nTerm. These confidentiality obligations continue for three years after termination.\n\nReturn of Information. Each party must return or destroy confidential materials when requested.",
+    "expected_clauses": ["confidentiality", "termination"],
+    "retrieval": [
+      {"query": "Who may receive confidential information?", "expected_text": "employees who need it"},
+      {"query": "How long do confidentiality duties continue?", "expected_text": "three years"}
+    ]
+  },
+  {
+    "id": "sample-services",
+    "text": "Professional Services Agreement\n\nServices. The Provider shall deliver the software migration and support services described in the attached schedule.\n\nPayment. The Client shall pay the Provider USD 4,500 within fifteen days after receiving an invoice.\n\nLiability. Each party's liability for direct damages is limited to fees paid in the prior twelve months.\n\nDisputes. The parties shall submit disputes to mediation in Example City before filing a claim.",
+    "expected_clauses": ["payment", "liability", "dispute_resolution"],
+    "retrieval": [
+      {"query": "How much is the service fee?", "expected_text": "USD 4,500"},
+      {"query": "What happens before a dispute claim?", "expected_text": "mediation in Example City"}
+    ]
+  }
+]

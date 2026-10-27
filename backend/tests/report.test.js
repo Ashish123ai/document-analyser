@@ -1,4 +1,5 @@
 const { buildReport } = require('../services/reportService');
+const { calculateRiskScore } = require('../services/riskScore');
 const { verifyMagicBytes } = require('../middleware/upload');
 const fs = require('fs');
 const os = require('os');
@@ -13,6 +14,8 @@ describe('report builder', () => {
       wordCount: 900,
       analysis: {
         riskLevel: 'high',
+        riskScore: 56,
+        riskScoreBreakdown: { formula: 'Weighted test formula.' },
         analyzedAt: new Date('2026-01-01'),
         summary: { executive_summary: 'A residential lease.', parties: ['A', 'B'] },
         risks: [{ title: 'Unlimited liability', level: 'high', page: 2, explanation: 'No cap.' }],
@@ -23,6 +26,17 @@ describe('report builder', () => {
     expect(md).toContain('# Legal document analysis: lease.pdf');
     expect(md).toContain('[HIGH] Unlimited liability');
     expect(md).toContain('Governing law');
+    expect(md).toContain('Risk score:** 56/100');
+    expect(md).toContain('Weighted test formula.');
+  });
+});
+
+describe('risk score', () => {
+  it('uses documented weights, missing-clause points and a 100-point cap', () => {
+    expect(calculateRiskScore([{ level: 'high' }, { level: 'medium' }, { level: 'low' }], ['Payment']))
+      .toMatchObject({ score: 48, riskPoints: 40, missingClausePoints: 8 });
+    expect(calculateRiskScore(Array(5).fill({ level: 'high' }), ['Payment', 'Liability']))
+      .toMatchObject({ score: 100 });
   });
 });
 

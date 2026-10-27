@@ -101,6 +101,25 @@ def test_pdf_without_text_gives_helpful_error(tmp_path):
         load_document(str(path), "pdf")
 
 
+def test_scanned_pdf_uses_ocr(monkeypatch, tmp_path):
+    import fitz
+    import pytesseract
+    from PIL import Image
+
+    image_path = tmp_path / "page.png"
+    Image.new("RGB", (80, 80), "white").save(image_path)
+    path = tmp_path / "scan-with-image.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_image(page.rect, filename=str(image_path))
+    doc.save(path)
+    doc.close()
+    monkeypatch.setattr(pytesseract, "image_to_string", lambda image: "Scanned agreement text from OCR.")
+
+    pages = load_document(str(path), "pdf")
+    assert "Scanned agreement text from OCR." in pages[0].text
+
+
 def test_generator_renumbers_citations(monkeypatch):
     from rag import generator
     from rag.retriever import RetrievedChunk

@@ -8,6 +8,15 @@ class DocRef(BaseModel):
     user_id: str = Field(pattern=ID_PATTERN)
 
 
+class CompareRequest(DocRef):
+    other_document_id: str = Field(pattern=ID_PATTERN)
+
+
+class ReportExportRequest(BaseModel):
+    format: str = Field(pattern=r"^(pdf|docx)$")
+    report_text: str = Field(min_length=1, max_length=250000)
+
+
 class HistoryTurn(BaseModel):
     question: str = Field(max_length=1000)
     answer: str = Field(max_length=6000)
@@ -57,6 +66,7 @@ class RiskItem(BaseModel):
     clause_text: str = ""
     explanation: str = ""
     recommendation: str = ""
+    evidence_strength: str = "verified_quote"
 
 
 class RiskResponse(BaseModel):

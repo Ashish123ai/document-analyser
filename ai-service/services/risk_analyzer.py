@@ -14,7 +14,7 @@ _ORDER = {"high": 0, "medium": 1, "low": 2}
 # Each rule: category id, title, level, regex, plain-English explanation, suggestion.
 RULES = [
     dict(id="unlimited_liability", title="Unlimited liability", level="high",
-         pattern=r"unlimited\s+liabilit|no\s+(?:limit|cap)\s+on\s+(?:the\s+)?liabilit|liabilit(?:y|ies)[^.]{0,80}\bwithout\s+(?:any\s+)?(?:limit|cap)|liable\s+for\s+all\s+(?:losses|damages|costs)",
+         pattern=r"unlimited\s+liabilit|liabilit(?:y|ies)[^.]{0,80}\bunlimited\b|no\s+(?:limit|cap)\s+on\s+(?:the\s+)?liabilit|liabilit(?:y|ies)[^.]{0,80}\bwithout\s+(?:any\s+)?(?:limit|cap)|liable\s+for\s+all\s+(?:losses|damages|costs)",
          explanation="One party can be held responsible for losses of any size, with no ceiling.",
          recommendation="Ask for a liability cap (for example, the fees paid in the last 12 months)."),
     dict(id="broad_indemnity", title="Broad indemnity", level="high",
@@ -72,6 +72,10 @@ RULES = [
 ]
 _COMPILED = [(r, re.compile(r["pattern"], re.IGNORECASE | re.DOTALL)) for r in RULES]
 CATEGORY_IDS = [r["id"] for r in RULES]
+
+
+def _normalize_quote(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip().casefold()
 
 LLM_SYSTEM = """You are a contracts lawyer's assistant reviewing a document for risky or unusual clauses.
 Review from the perspective of an individual or small business that is asked to sign it.
@@ -135,6 +139,7 @@ def scan_rules(pages: list[Page]) -> list[dict]:
                     "clause_text": _excerpt(para, m),
                     "explanation": rule["explanation"],
                     "recommendation": rule["recommendation"],
+                    "evidence_strength": "strong",
                 })
     return found
 
@@ -143,17 +148,28 @@ def _clean_llm_risk(item: dict, pages: list[Page]) -> dict | None:
     if not isinstance(item, dict) or not item.get("title"):
         return None
     level = str(item.get("level", "medium")).lower()
-    page = item.get("page")
     valid_pages = {p.number for p in pages}
+    quote = str(item.get("clause_text") or "")[:500]
+    normalized_quote = _normalize_quote(quote)
+    evidence_page = next(
+        (p for p in pages if normalized_quote and normalized_quote in _normalize_quote(p.text)),
+        None,
+    )
+    # Discard model findings whose quoted evidence cannot be located verbatim.
+    if evidence_page is None:
+        return None
+    category = str(item.get("category") or "other")
+    rule_match = next((rule for rule, rx in _COMPILED if rule["id"] == category and rx.search(quote)), None)
     return {
         "title": str(item["title"])[:120],
         "level": level if level in LEVELS else "medium",
-        "category": str(item.get("category") or "other"),
-        "page": page if page in valid_pages else None,
-        "clause_ref": None,
-        "clause_text": str(item.get("clause_text") or "")[:500],
+        "category": category,
+        "page": evidence_page.number if evidence_page.number in valid_pages else None,
+        "clause_ref": detect_clause_ref(quote),
+        "clause_text": quote,
         "explanation": str(item.get("explanation") or "")[:500],
         "recommendation": str(item.get("recommendation") or "")[:400],
+        "evidence_strength": "strong" if rule_match else "verified_quote",
     }
 
 

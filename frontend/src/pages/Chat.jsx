@@ -120,7 +120,7 @@ export default function Chat() {
   if (docs.length === 0) {
     return (
       <div className="panel">
-        <EmptyState icon={MessageSquare} title="No documents ready" action={<Link to="/documents" className="btn-primary">Upload a document</Link>}>
+        <EmptyState icon={MessageSquare} title="No documents ready" action={<Link to="/app/analyze" className="btn-primary">Upload a document</Link>}>
           Upload a contract and wait for it to finish processing, then come back to ask questions.
         </EmptyState>
       </div>
@@ -132,14 +132,14 @@ export default function Chat() {
       <aside aria-label="Choose a document">
         <h1 className="mb-3 text-lg">Ask a question</h1>
         <label htmlFor="doc-select" className="label lg:hidden">Document</label>
-        <select id="doc-select" className="input lg:hidden" value={documentId || ''} onChange={(e) => navigate(`/chat/${e.target.value}`)}>
+        <select id="doc-select" className="input lg:hidden" value={documentId || ''} onChange={(e) => navigate(`/app/chat/${e.target.value}`)}>
           <option value="" disabled>Choose a document</option>
           {docs.map((d) => <option key={d._id} value={d._id}>{d.originalName}</option>)}
         </select>
         <ul className="hidden max-h-[70vh] space-y-1 overflow-y-auto lg:block">
           {docs.map((d) => (
             <li key={d._id}>
-              <Link to={`/chat/${d._id}`} aria-current={d._id === documentId ? 'page' : undefined}
+              <Link to={`/app/chat/${d._id}`} aria-current={d._id === documentId ? 'page' : undefined}
                 className={`flex items-start gap-2 rounded-md px-3 py-2 text-sm ${d._id === documentId ? 'bg-seal-tint font-medium text-seal' : 'text-ink-soft hover:bg-white'}`}>
                 <FileText className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> <span className="break-words">{d.originalName}</span>
               </Link>

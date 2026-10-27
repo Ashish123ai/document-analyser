@@ -74,6 +74,31 @@ def test_delete_removes_everything(client):
     assert r.status_code == 404
 
 
+def test_compare_documents_and_export_formats(client):
+    upload(client, "compare_old", "compare_user", "The Supplier shall deliver goods within 10 days. Liability is capped at $1,000.")
+    upload(client, "compare_new", "compare_user", "The Supplier shall deliver goods within 5 days. There is unlimited liability for all losses.")
+    comparison = client.post(
+        "/compare-documents",
+        headers=H,
+        json={"document_id": "compare_old", "other_document_id": "compare_new", "user_id": "compare_user"},
+    )
+    assert comparison.status_code == 200, comparison.text
+    result = comparison.json()
+    assert result["changes"] and result["risk_change"]["added_findings"]
+    other_user = client.post(
+        "/compare-documents",
+        headers=H,
+        json={"document_id": "compare_old", "other_document_id": "compare_new", "user_id": "different_user"},
+    )
+    assert other_user.status_code == 404
+
+    markdown = "# Analysis report\n\n## Summary\n\n- Important terms"
+    pdf = client.post("/export-report", headers=H, json={"format": "pdf", "report_text": markdown})
+    docx = client.post("/export-report", headers=H, json={"format": "docx", "report_text": markdown})
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    assert docx.status_code == 200 and docx.content.startswith(b"PK")
+
+
 def test_rejects_bad_input(client):
     assert upload(client, "../etc/passwd", "user_a").status_code in (400, 422)
     bad = client.post("/process-document", headers=H, files={"file": ("x.exe", b"MZ", "application/octet-stream")}, data={"document_id": "d9", "user_id": "u9", "file_type": "exe"})

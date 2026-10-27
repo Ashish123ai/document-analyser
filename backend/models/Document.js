@@ -9,6 +9,7 @@ const riskSchema = new mongoose.Schema(
     clauseText: String,
     explanation: String,
     recommendation: String,
+    evidenceStrength: { type: String, enum: ['strong', 'verified_quote', 'unverified'] },
   },
   { _id: false }
 );
@@ -47,6 +48,8 @@ const documentSchema = new mongoose.Schema(
       summary: { type: mongoose.Schema.Types.Mixed },
       risks: [riskSchema],
       riskLevel: { type: String, enum: ['high', 'medium', 'low'] },
+      riskScore: { type: Number, min: 0, max: 100 },
+      riskScoreBreakdown: { type: mongoose.Schema.Types.Mixed },
       clauses: [clauseSchema],
       missingClauses: [String],
       analyzedAt: Date,

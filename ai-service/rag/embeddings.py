@@ -57,7 +57,12 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     model = _get_model()
     if isinstance(model, HashingEmbedder):
         return model.encode(texts)
-    return model.encode(texts, batch_size=32, normalize_embeddings=True, show_progress_bar=False).tolist()
+    return model.encode(
+        texts,
+        batch_size=settings.embedding_batch_size,
+        normalize_embeddings=True,
+        show_progress_bar=False,
+    ).tolist()
 
 
 def embed_query(text: str) -> list[float]:

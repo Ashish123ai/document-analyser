@@ -27,11 +27,11 @@ const env = {
   ai: {
     url: process.env.AI_SERVICE_URL || 'http://127.0.0.1:8000',
     key: secret('AI_INTERNAL_KEY', 'dev-internal-key'),
-    timeoutMs: parseInt(process.env.AI_TIMEOUT_MS, 10) || 180000,
+    timeoutMs: parseInt(process.env.AI_TIMEOUT_MS, 10) || 600000,
   },
   upload: {
     dir: process.env.UPLOAD_DIR || './uploads',
-    maxSizeMb: parseInt(process.env.MAX_UPLOAD_MB, 10) || 15,
+    maxSizeMb: parseInt(process.env.MAX_UPLOAD_MB, 10) || 200,
   },
   smtp: {
     host: process.env.SMTP_HOST || '',

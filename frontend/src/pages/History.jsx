@@ -57,7 +57,7 @@ export default function History() {
                 <div className="space-y-4 border-t border-rule px-5 py-4">
                   <p className={`whitespace-pre-wrap text-[14.5px] ${c.found ? '' : 'text-muted'}`}>{c.answer}</p>
                   {c.sources?.slice(0, 2).map((s, i) => <Excerpt key={i} page={s.page} clause={s.clause} text={s.text} terms={questionTerms(c.question)} />)}
-                  {c.documentId && <Link to={`/chat/${c.documentId}`} className="inline-block text-sm text-seal hover:underline">Continue this conversation</Link>}
+                  {c.documentId && <Link to={`/app/chat/${c.documentId}`} className="inline-block text-sm text-seal hover:underline">Continue this conversation</Link>}
                 </div>
               </details>
             </li>

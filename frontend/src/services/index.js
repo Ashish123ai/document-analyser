@@ -46,7 +46,8 @@ export const documentService = {
   analyze: (id) => data(api.post(`/documents/${id}/analyze`)),
   reprocess: (id) => data(api.post(`/documents/${id}/reprocess`)),
   download: async (id, name) => saveBlob((await api.get(`/documents/${id}/download`, { responseType: 'blob' })).data, name),
-  report: async (id, name) => saveBlob((await api.get(`/documents/${id}/report`, { responseType: 'blob' })).data, `${name.replace(/\.[^.]+$/, '')}-analysis.md`),
+  report: async (id, name, format = 'md') => saveBlob((await api.get(`/documents/${id}/report`, { params: { format }, responseType: 'blob' })).data, `${name.replace(/\.[^.]+$/, '')}-analysis.${format}`),
+  compare: (documentId, otherDocumentId) => data(api.post('/documents/compare', { documentId, otherDocumentId })),
 };
 
 export const chatService = {

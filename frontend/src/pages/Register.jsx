@@ -24,7 +24,7 @@ export default function Register() {
     setBusy(true);
     try {
       await register({ name: form.name.trim(), email: form.email.trim(), password: form.password });
-      navigate('/dashboard', { replace: true });
+      navigate('/app/dashboard', { replace: true });
     } catch (err) {
       setError(errorMessage(err));
       setBusy(false);

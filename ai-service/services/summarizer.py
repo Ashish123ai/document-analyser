@@ -29,6 +29,12 @@ CHAT_SUMMARY_SYSTEM = """Summarize the uploaded document in plain English for th
 Use only the document text. Cover its purpose and the most important details. Keep it concise,
 and do not force legal-contract categories onto a document that is not a contract."""
 
+_FRONT_MATTER = re.compile(
+    r"\b(?:copyright|all rights reserved|no part of this (?:book|document)|reproduced in any form|"
+    r"written permission|designed by|published by|isbn|trademark)\b",
+    re.IGNORECASE,
+)
+
 NOTES_SYSTEM = """You are reading one section of a long legal document. Write short factual notes (bullet points) on:
 parties, contract type, duration, payments, termination, key obligations, penalties and dates.
 Include page numbers from the [Page n] markers. Use ONLY the text provided. Do not add commentary."""
@@ -37,36 +43,55 @@ Include page numbers from the [Page n] markers. Use ONLY the text provided. Do n
 def summarize(pages: list[Page]) -> dict:
     llm = get_llm()
     if llm.is_mock:
-        return heuristic_summary(pages)
+        return enrich_summary(heuristic_summary(pages), pages)
 
     text = join_pages(pages)
     try:
         if len(text) > settings.max_direct_chars:
             text = _map_reduce_notes(text)
         data = llm.complete_json(SYSTEM, f"Document text:\n\n{text}", max_tokens=2000)
-        return _normalise(data)
+        return enrich_summary(_normalise(data), pages)
     except LLMError:
         # A model hiccup should not break the whole analysis: fall back to rule-based extraction.
-        return heuristic_summary(pages)
+        return enrich_summary(heuristic_summary(pages), pages)
 
 
-def summarize_for_chat(pages: list[Page]) -> str:
+def summarize_for_chat(pages: list[Page], scope_label: str | None = None) -> str:
     """Create a general-purpose overview for summary requests made in document chat."""
     text = join_pages(pages)
     if not text.strip():
         return ""
 
     llm = get_llm()
+    # Avoid sending a whole book or large bundle to a model in one prompt.
+    # Ask for a page or range instead of presenting an opening excerpt as a full summary.
+    if len(text) > settings.max_direct_chars:
+        if scope_label:
+            return f"The selected {scope_label} is too long to summarize in one request. Try a smaller page range."
+        page_count = max((page.number for page in pages), default=len(pages))
+        return (
+            f"This document has {page_count:,} pages and is too large for a reliable full-document summary in one request. "
+            "Ask for a specific page or range, for example: ‘summarise pages 3–10’."
+        )
+
     if llm.is_mock:
         # The offline provider cannot write a new abstractive summary; return an
         # extractive overview so summary questions still use the whole document.
-        return _as_bullets(heuristic_summary(pages)["executive_summary"])
+        summary = _as_bullets(heuristic_summary(pages)["executive_summary"])
+        return f"Summary of {scope_label}:\n{summary}" if scope_label else summary
 
     try:
-        response = llm.complete(CHAT_SUMMARY_SYSTEM, f"Document text:\n\n{text}", max_tokens=700).strip()
-        return _as_bullets(response)
+        label = scope_label or "the document"
+        response = llm.complete(
+            CHAT_SUMMARY_SYSTEM,
+            f"Text from {label}:\n\n{text}",
+            max_tokens=700,
+        ).strip()
+        summary = _as_bullets(response)
+        return f"Summary of {scope_label}:\n{summary}" if scope_label else summary
     except LLMError:
-        return _as_bullets(heuristic_summary(pages)["executive_summary"])
+        summary = _as_bullets(heuristic_summary(pages)["executive_summary"])
+        return f"Summary of {scope_label}:\n{summary}" if scope_label else summary
 
 
 def _as_bullets(text: str) -> str:
@@ -106,6 +131,66 @@ def _normalise(data: dict) -> dict:
     return out
 
 
+_OBLIGATION = re.compile(r"\b(?:shall|must|required to|agrees to|will)\b", re.IGNORECASE)
+_DEADLINE = re.compile(
+    r"\b(?:within\s+\d+\s+(?:calendar\s+|business\s+)?(?:days?|weeks?|months?)|"
+    r"no later than\s+[^.;,]{1,60}|by\s+(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|"
+    r"\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}|"
+    r"(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,?\s+\d{4})?))\b",
+    re.IGNORECASE,
+)
+_AMOUNT = re.compile(
+    r"(?:(?:[$₹€£]|Rs\.?|INR|USD|EUR|GBP)\s?\d[\d,]*(?:\.\d{1,2})?|\b\d[\d,]*(?:\.\d{1,2})?\s?(?:INR|USD|EUR|GBP)\b)",
+    re.IGNORECASE,
+)
+
+_TYPE_CHECKLISTS = {
+    "Lease / rental agreement": ["Payment", "Deposit", "Maintenance", "Termination", "Governing law"],
+    "Employment agreement": ["Compensation", "Role and duties", "Confidentiality", "Termination", "Intellectual property"],
+    "Non-disclosure agreement": ["Definition of confidential information", "Permitted disclosures", "Term", "Return or destruction", "Remedies"],
+    "Service agreement": ["Scope of services", "Payment", "Term and termination", "Liability", "Intellectual property"],
+    "Sale agreement": ["Goods or services", "Price and payment", "Delivery", "Warranties", "Remedies"],
+    "Loan agreement": ["Principal and interest", "Repayment", "Default", "Security", "Governing law"],
+    "Partnership agreement": ["Contributions", "Profit sharing", "Management", "Withdrawal or dissolution", "Dispute resolution"],
+}
+
+
+def enrich_summary(summary: dict, pages: list[Page]) -> dict:
+    full_text = "\n".join(page.text for page in pages)
+    detected_type, best = "Other / unclassified", 0
+    for label, pattern in _TYPES:
+        hits = len(re.findall(pattern, full_text[:8000], re.IGNORECASE))
+        if hits > best:
+            detected_type, best = label, hits
+
+    obligations = []
+    for page in pages:
+        for sentence in _sentences(page.text):
+            if not _OBLIGATION.search(sentence):
+                continue
+            deadline = _DEADLINE.search(sentence)
+            obligations.append({
+                "text": sentence[:300],
+                "party": next((p for p in summary.get("parties", []) if p.casefold() in sentence.casefold()), "Not identified"),
+                "deadline": deadline.group(0) if deadline else "Not specified",
+                "page": page.number,
+            })
+            if len(obligations) >= 20:
+                break
+        if len(obligations) >= 20:
+            break
+
+    summary["document_type"] = detected_type if best else summary.get("contract_type", "Other / unclassified")
+    summary["checklist"] = _TYPE_CHECKLISTS.get(summary["document_type"], [])
+    summary["entities"] = {
+        "parties": summary.get("parties", []),
+        "dates": list(dict.fromkeys(m.group(0) for m in _DATE.finditer(full_text)))[:20],
+        "amounts": list(dict.fromkeys(m.group(0) for m in _AMOUNT.finditer(full_text)))[:20],
+    }
+    summary["obligations"] = obligations
+    return summary
+
+
 # ------------------------------------------------------------------ rule-based fallback
 _DATE = re.compile(
     r"\b(?:\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:January|February|March|April|May|June|July|August|September|October|November|December),?\s+\d{4}"
@@ -126,7 +211,7 @@ _TYPES = [
 
 def _sentences(text: str) -> list[str]:
     flat = re.sub(r"\s+", " ", text)
-    return [s.strip() for s in re.split(r"(?<=[.;!?])\s+(?=[A-Z0-9(])", flat) if len(s.strip()) > 25]
+    return [s.strip() for s in re.split(r"(?<![Rr][Ss]\.)(?<=[.;!?])\s+(?=[A-Z0-9(])", flat) if len(s.strip()) > 25]
 
 
 def _pick(sentences: list[str], pattern: str, limit: int) -> list[str]:
@@ -156,8 +241,11 @@ def heuristic_summary(pages: list[Page]) -> dict:
 
     dates = list(dict.fromkeys(m.group(0) for m in _DATE.finditer(full)))[:8]
 
+    opening_sentences = [s for s in _sentences(head) if not _FRONT_MATTER.search(s)]
+    executive_summary = " ".join(opening_sentences[:3])[:700] or full[:500]
+
     return {
-        "executive_summary": " ".join(_sentences(head)[:3])[:700] or full[:500],
+        "executive_summary": executive_summary,
         "contract_type": contract_type,
         "parties": parties,
         "duration": duration,

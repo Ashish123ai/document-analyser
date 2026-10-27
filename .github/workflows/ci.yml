@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       # Tests use the offline hashing embedder + mock LLM, so no model download or API key is needed.
-      - run: pip install fastapi uvicorn python-multipart pydantic python-dotenv pymupdf python-docx langchain-text-splitters "chromadb==0.5.23" "numpy<2" httpx pytest anthropic openai
+      - run: pip install fastapi uvicorn python-multipart pydantic python-dotenv pymupdf python-docx pytesseract pillow reportlab langchain-text-splitters "chromadb==0.5.23" "numpy<2" httpx pytest anthropic openai
       - run: python -m pytest -q
 
   frontend:

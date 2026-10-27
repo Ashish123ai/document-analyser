@@ -48,3 +48,13 @@ def test_heuristic_summary_extracts_basics():
     assert "twelve" in s["duration"].lower()
     assert any("1 January 2026" in d for d in s["important_dates"])
     assert s["termination_conditions"]
+
+
+def test_summary_enrichment_adds_type_entities_and_obligations():
+    source = [Page(1, "The Landlord shall return the Rs. 25,000 deposit within 30 days. The Tenant must pay rent by 1 February 2026.")]
+    summary = summarizer.enrich_summary({"parties": ["Landlord", "Tenant"], "contract_type": "Lease"}, source)
+    assert summary["document_type"] == "Lease / rental agreement"
+    assert "Deposit" in summary["checklist"]
+    assert "Rs. 25,000" in summary["entities"]["amounts"]
+    assert len(summary["obligations"]) == 2
+    assert summary["obligations"][0]["deadline"].lower() == "within 30 days"

@@ -23,23 +23,26 @@ def _float(name: str, default: float) -> float:
 class Settings:
     internal_key: str = os.getenv("AI_INTERNAL_KEY", "dev-internal-key")
 
-    llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic").lower()
-    llm_model: str = os.getenv("LLM_MODEL", "claude-sonnet-5-5")
+    llm_provider: str = os.getenv("LLM_PROVIDER", "openai").lower()
+    llm_model: str = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    openai_base_url: str = os.getenv("OPENAI_BASE_URL", "")
+    openai_base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.groq.com/openai/v1")
 
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
     chunk_size: int = _int("CHUNK_SIZE", 900)
-    chunk_overlap: int = _int("CHUNK_OVERLAP", 150)
+    chunk_overlap: int = _int("CHUNK_OVERLAP", 50)
+    embedding_batch_size: int = _int("EMBEDDING_BATCH_SIZE", 64)
 
     top_k: int = _int("TOP_K", 5)
     min_relevance: float = _float("MIN_RELEVANCE", 0.22)
+    # Optional second-stage semantic reranker; set to "none" to disable.
+    reranker_model: str = os.getenv("RERANKER_MODEL", "none")
 
     chroma_dir: str = os.getenv("CHROMA_DIR", "./data/chroma")
     text_dir: str = os.getenv("TEXT_DIR", "./data/texts")
-    max_upload_mb: int = _int("MAX_UPLOAD_MB", 20)
+    max_upload_mb: int = _int("MAX_UPLOAD_MB", 200)
 
     # DOCX/TXT have no real pages, so text is grouped into "virtual pages" of about this many characters.
     virtual_page_chars: int = _int("VIRTUAL_PAGE_CHARS", 3000)

@@ -72,6 +72,22 @@ module.exports = {
     return call(() => http.post('/detect-clauses', ids(documentId, userId)));
   },
 
+  compareDocuments(documentId, otherDocumentId, userId) {
+    return call(() => http.post('/compare-documents', {
+      ...ids(documentId, userId),
+      other_document_id: String(otherDocumentId),
+    }));
+  },
+
+  async exportReport(format, reportText) {
+    try {
+      const response = await http.post('/export-report', { format, report_text: reportText }, { responseType: 'arraybuffer' });
+      return Buffer.from(response.data);
+    } catch (err) {
+      throw toApiError(err);
+    }
+  },
+
   deleteDocument(documentId, userId) {
     return call(() => http.delete(`/documents/${documentId}`, { params: { user_id: String(userId) } }));
   },

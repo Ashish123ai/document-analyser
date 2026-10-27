@@ -22,7 +22,7 @@ export default function Login() {
     setBusy(true);
     try {
       await login(email.trim(), password);
-      navigate(location.state?.from?.pathname || '/dashboard', { replace: true });
+      navigate(location.state?.from?.pathname || '/app/dashboard', { replace: true });
     } catch (err) {
       setError(errorMessage(err));
       setBusy(false);

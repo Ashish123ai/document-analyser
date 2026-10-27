@@ -15,6 +15,7 @@ from rag.splitter import Chunk
 
 _lock = threading.Lock()
 _collection = None
+_client = None
 BATCH = 500
 
 
@@ -25,18 +26,27 @@ def _collection_name() -> str:
 
 
 def get_collection():
-    global _collection
+    global _client, _collection
     if _collection is None:
         with _lock:
             if _collection is None:
-                client = chromadb.PersistentClient(
+                _client = chromadb.PersistentClient(
                     path=settings.chroma_dir,
                     settings=ChromaSettings(anonymized_telemetry=False),
                 )
-                _collection = client.get_or_create_collection(
+                _collection = _client.get_or_create_collection(
                     name=_collection_name(), metadata={"hnsw:space": "cosine"}
                 )
     return _collection
+
+
+def close() -> None:
+    global _client, _collection
+    with _lock:
+        if _client is not None:
+            _client._system.stop()
+            _client = None
+            _collection = None
 
 
 def _where(user_id: str, document_id: str) -> dict:

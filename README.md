@@ -11,11 +11,15 @@ An AI-powered web app for understanding legal documents. Users upload a contract
 | **Authentication** | Register, login, logout, bcrypt password hashing, JWT access + rotating refresh tokens, token validation on load, forgot/reset password (emailed one-time link), change password, account lockout after 5 failed logins, delete account |
 | **Authorization** | Every document, chat and analysis is scoped to its owner. Other users get `404`, never `403`, so document existence is not leaked |
 | **Documents** | PDF/DOCX/TXT upload with extension + MIME + magic-byte checks, size limit, duplicate detection (SHA-256), background processing with live status, retry, download, delete (removes file, vectors, text and chats) |
-| **RAG pipeline** | Extract → clean → chunk → embed → vector DB (ChromaDB), then hybrid retrieval → grounded generation with citations |
+| **RAG pipeline** | Extract → clean → chunk → embed → vector DB (ChromaDB), then dense + keyword retrieval, optional cross-encoder reranking, and grounded generation with citations |
 | **Chat** | Follow-up questions are rewritten into standalone queries, answers cite sources `[1]`, "not found" is returned instead of guessing, history per document and across documents |
-| **Analysis** | Structured summary, risk detection (rules + LLM review, High/Medium/Low), clause detection with plain-English explanations, missing-clause warnings, exportable Markdown report |
+| **Analysis** | Structured summary, risk detection (rules + LLM review, High/Medium/Low) with verified evidence strength, clause detection with plain-English explanations, missing-clause warnings, exportable Markdown report |
 | **Dashboard** | Totals, risk distribution, recent documents and questions |
 | **Security & ops** | Helmet, CORS allow-list, NoSQL-injection sanitising, rate limiting (global, auth, per-user AI/upload), input validation, audit log (90-day TTL), service-to-service key, health checks, Docker, CI |
+
+### Frontend navigation
+
+The public landing page is `/`. The authenticated workspace lives under `/app/*` (Dashboard, Analyze, Compare, Archive, chat/history and Profile). Existing workspace URLs such as `/dashboard` and `/documents` redirect to their `/app/*` equivalents for bookmark compatibility. The light/dark preference is stored separately for each signed-in account in the browser.
 
 ## Architecture
 
@@ -41,7 +45,7 @@ An AI-powered web app for understanding legal documents. Users upload a contract
 ```bash
 cp .env.example .env          # fill the three secrets and your LLM key
 docker compose up --build
-# open http://localhost:8080
+# open http://localhost:8081
 ```
 Generate secrets with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
 
@@ -77,21 +81,30 @@ A sample contract to try is in `samples/sample_lease.txt`. Ask it: *"How much no
 | `LLM_PROVIDER` | Notes |
 |---|---|
 | `anthropic` | Set `ANTHROPIC_API_KEY`; model via `LLM_MODEL` (default `claude-sonnet-5-5`, change to any model you have access to) |
-| `openai` | `OPENAI_API_KEY`; or `OPENAI_BASE_URL` for any OpenAI-compatible server (e.g. Ollama at `http://localhost:11434/v1`) |
+| `openai` | `OPENAI_API_KEY`; or `OPENAI_BASE_URL` for any OpenAI-compatible server. Groq uses `https://api.groq.com/openai/v1`; for local Ollama use `http://localhost:11434/v1`. |
 | `mock` | No key, fully offline |
 
 ## RAG design decisions (good viva material)
 
 1. **Chunking: 900 characters, 150 overlap, per page.** `all-MiniLM-L6-v2` reads about 256 tokens, roughly 1000 characters; larger chunks would be silently truncated when embedded. Chunks never cross pages, so every citation has an exact page number. Overlap keeps a sentence that straddles a boundary retrievable. Both values are env-configurable.
 2. **Clause references.** A regex tags each chunk with `Clause 8.2`, `Section 4` etc. when present, so answers can cite "Page 4, Clause 8.2".
-3. **Hybrid retrieval.** Dense cosine similarity (80%) plus keyword overlap (20%). Legal text relies on exact terms ("indemnify", "30 days") that pure embeddings can blur.
+3. **Hybrid retrieval.** Dense cosine similarity (90%) plus keyword overlap (10%). Legal text relies on exact terms ("indemnify", "30 days") that pure embeddings can blur. An optional cross-encoder can rerank candidates (`RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2`); it is disabled by default to keep response time lower.
 4. **Relevance threshold.** If nothing scores above `MIN_RELEVANCE`, the LLM is **not called** and the app answers *"I could not find this information in the uploaded document."* This stops hallucination and saves cost.
 5. **Grounded prompt.** The model may only use the numbered passages, must cite them, and must return the exact "not found" sentence when the answer is missing. Citation numbers are renumbered server-side so `[k]` always equals `sources[k-1]`.
 6. **Follow-up questions.** "What about early exit?" is rewritten into a standalone question using the last turns before retrieval.
 7. **Multi-tenant safety.** Every vector carries `user_id` + `document_id`; every query filters on both; text files are stored under `data/texts/<user_id>/`; IDs are regex-validated (no path traversal). Tests prove another user cannot read or query a document even if they know its id.
 8. **Hybrid risk detection.** 13 deterministic regex rules always run (fast, free, explainable). When an LLM is configured it reviews the document with the rule hits as hints, confirms or drops them, and adds what rules miss. If the LLM fails, rule results still return.
+   LLM-added findings are retained only when their quoted evidence is found in the source document. The UI distinguishes a rule-backed strong finding from a quote-verified finding.
 9. **Long documents.** Summaries over ~45k characters use map-reduce (notes per section, then a final structured summary).
-10. **Scanned PDFs** have no text layer; the service returns a clear message asking for OCR. (See Future work.)
+10. **Scanned PDFs** use Tesseract OCR on pages without a usable text layer. Docker installs English Tesseract data; local installations need Tesseract installed and on `PATH`.
+
+## Major-project additions
+
+- **OCR:** embedded-image PDF pages are rendered and read with Tesseract. OCR output can be imperfect; visually verify important text.
+- **Structured analysis:** analysis includes an explainable 0–100 screening score (24/high finding, 12/medium, 4/low, plus 8 per missing expected clause; capped at 100), detected document type, suggested checklist, parties, dates, amounts, and rule-extracted obligations/deadlines. The score is a project-specific indicator, not a legal probability or advice.
+- **Document comparison:** compare two processed documents you own to view inserted/removed text and changes in risk finding categories. Text is matched by lines; it is not a legal redline.
+- **Reports and dashboard:** export Markdown, PDF, or DOCX reports; the dashboard includes risk score bands and an average score.
+- **Evaluation:** `python evaluation/run_benchmark.py` in `ai-service/` reports micro precision/recall/F1 for clause detection and retrieval hit-rate@3 on a small synthetic, hand-labelled regression dataset. This dataset is too small to support claims about production accuracy.
 
 ## Security checklist
 
@@ -123,7 +136,8 @@ All routes are under `/api`. Protected routes need `Authorization: Bearer <acces
 | `GET /documents` 🔒 | List (`search`, `status`, `risk`, `page`, `limit`) |
 | `POST /documents` 🔒 | Upload (`multipart`, field `file`) → `201`, processing runs in background |
 | `GET /documents/:id` 🔒 | Detail incl. analysis |
-| `GET /documents/:id/download` · `/report` 🔒 | Original file · Markdown analysis report |
+| `GET /documents/:id/download` · `/report?format=md|pdf|docx` 🔒 | Original file · analysis report |
+| `POST /documents/compare` 🔒 | Compare `{documentId, otherDocumentId}` (both must be owned and processed) |
 | `POST /documents/:id/analyze` 🔒 | Run summary + risks + clauses |
 | `POST /documents/:id/reprocess` 🔒 | Retry a failed document |
 | `DELETE /documents/:id` 🔒 | Delete file, vectors, chats |
@@ -135,12 +149,12 @@ All routes are under `/api`. Protected routes need `Authorization: Bearer <acces
 | `GET /health` | DB + AI service status |
 
 **AI service** (internal, header `X-Internal-Key`; interactive docs at `http://localhost:8000/docs`):
-`POST /process-document` · `/ask` · `/retrieve` · `/embed` · `/summarize` · `/analyze-risk` · `/detect-clauses` · `DELETE /documents/{id}?user_id=` · `GET /health`.
+`POST /process-document` · `/ask` · `/retrieve` · `/embed` · `/summarize` · `/analyze-risk` · `/detect-clauses` · `/compare-documents` · `/export-report` · `DELETE /documents/{id}?user_id=` · `GET /health`.
 
 ## Data model
 
 - **User**: name, email, passwordHash, tokenVersion, reset-token hash + expiry, failedLoginAttempts, lockUntil
-- **Document**: userId, original/stored name, filePath (hidden from API), type, size, sha256, status, page/chunk/word counts, analysisStatus, analysis {summary, risks[], riskLevel, clauses[], missingClauses[]}
+- **Document**: userId, original/stored name, filePath (hidden from API), type, size, sha256, status, page/chunk/word counts, analysisStatus, analysis {summary, risks[], riskLevel, riskScore, clauses[], missingClauses[]}
 - **Chat**: userId, documentId, question, answer, found, sources[{page, clause, text, score}]
 - **RevokedToken** (TTL), **AuditLog** (TTL 90 days)
 - **Vector store** (Chroma): chunk text, embedding, `user_id`, `document_id`, `page`, `clause`, `chunk_index`
@@ -148,8 +162,9 @@ All routes are under `/api`. Protected routes need `Authorization: Bearer <acces
 ## Tests
 
 ```bash
-cd backend    && npm test             # 17 unit tests (validation, auth gates, tokens, upload signatures, report); no DB needed
-cd ai-service && python -m pytest -q  # 24 tests incl. full API flow + cross-user isolation (offline embedder + mock LLM)
+cd backend    && npm test             # unit tests (validation, auth gates, tokens, upload signatures, report); no DB needed
+cd ai-service && python -m pytest -q  # API flow + cross-user isolation (offline embedder + mock LLM)
+cd ai-service && python evaluation/run_benchmark.py  # small synthetic clause/retrieval regression metrics
 cd frontend   && npm run build
 
 # Full-stack checks against a RUNNING system (MongoDB + ai-service + backend):
@@ -181,15 +196,14 @@ legal-document-analyzer/
 ├── docker-compose.yml, .github/workflows/ci.yml, .env.example
 ```
 
-## Future work (to mention in the report)
+## Further work (outside this implementation scope)
 
-- OCR for scanned PDFs (Tesseract / cloud OCR)
 - Streaming answers (SSE) and a cross-encoder re-ranker
-- Compare two versions of a contract; redline view
+- Clause-level semantic matching and a visual PDF redline with page-coordinate highlighting
 - Move the vector store to a managed service (Qdrant/pgvector) and uploads to S3 for horizontal scaling
 - Background job queue (BullMQ/Celery) instead of in-process processing
 - Email verification, 2FA, role-based admin console
-- Evaluation set measuring retrieval recall and answer faithfulness
+- A larger, expert-labelled evaluation set measuring retrieval recall, answer faithfulness, and hallucination rates
 - Multi-language documents (multilingual embedding model)
 
 ## Viva cheat-sheet

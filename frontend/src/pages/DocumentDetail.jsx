@@ -26,6 +26,29 @@ function List({ title, items }) {
   );
 }
 
+function RiskScore({ analysis }) {
+  if (!Number.isFinite(analysis.riskScore)) return null;
+  return (
+    <section className="panel flex flex-wrap items-center gap-5 p-5">
+      <div
+        className="grid h-24 w-24 shrink-0 place-items-center rounded-full"
+        role="img"
+        aria-label={`Risk score ${analysis.riskScore} out of 100`}
+        style={{ background: `conic-gradient(rgb(var(--high)) ${analysis.riskScore * 3.6}deg, rgb(var(--rule)) 0deg)` }}
+      >
+        <div className="grid h-[4.5rem] w-[4.5rem] place-items-center rounded-full bg-white text-center">
+          <span><b className="block text-2xl leading-7">{analysis.riskScore}</b><small className="text-muted">/100</small></span>
+        </div>
+      </div>
+      <div className="min-w-0 flex-1">
+        <h2 className="section-title">Indicative risk score</h2>
+        <p className="mt-1 text-sm text-muted">{analysis.riskScoreBreakdown?.formula}</p>
+        <p className="mt-1 text-xs text-muted">A project-specific screening indicator, not a legal opinion or probability of loss.</p>
+      </div>
+    </section>
+  );
+}
+
 function SummaryTab({ summary }) {
   return (
     <div className="space-y-8">
@@ -34,7 +57,7 @@ function SummaryTab({ summary }) {
         <p className="max-w-prose font-serif text-[17px] leading-[1.75] text-ink-soft">{summary.executive_summary}</p>
       </section>
       <dl className="grid gap-x-8 gap-y-4 border-y border-rule py-5 sm:grid-cols-3">
-        <div><dt className="text-sm text-muted">Document type</dt><dd className="font-medium">{summary.contract_type}</dd></div>
+        <div><dt className="text-sm text-muted">Document type</dt><dd className="font-medium">{summary.document_type || summary.contract_type}</dd></div>
         <div><dt className="text-sm text-muted">Duration</dt><dd className="font-medium">{summary.duration}</dd></div>
         <div><dt className="text-sm text-muted">Parties</dt><dd className="font-medium">{summary.parties?.length ? summary.parties.join(' and ') : 'Not identified'}</dd></div>
       </dl>
@@ -45,6 +68,27 @@ function SummaryTab({ summary }) {
         <List title="Penalties" items={summary.penalties} />
         <List title="Important dates" items={summary.important_dates} />
       </div>
+      {summary.checklist?.length > 0 && (
+        <section>
+          <h2 className="section-title mb-2">Suggested checklist for this document type</h2>
+          <p className="mb-3 text-xs text-muted">A checklist prompt, not a conclusion that every item is legally required.</p>
+          <ul className="flex flex-wrap gap-2">{summary.checklist.map((item) => <li key={item} className="rounded-full border border-rule px-3 py-1 text-sm">{item}</li>)}</ul>
+        </section>
+      )}
+      {summary.entities?.amounts?.length > 0 && <List title="Amounts found in document" items={summary.entities.amounts} />}
+      {summary.obligations?.length > 0 && (
+        <section>
+          <h2 className="section-title mb-3">Obligations and deadlines</h2>
+          <ul className="space-y-3">
+            {summary.obligations.map((item, index) => (
+              <li key={`${item.page}-${index}`} className="rounded-md border border-rule p-3">
+                <p className="text-sm">{item.text}</p>
+                <p className="mt-1 text-xs text-muted">{item.party} · Page {item.page} · Deadline: {item.deadline}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }
@@ -77,6 +121,7 @@ function RisksTab({ analysis }) {
               <h3 className="font-semibold">{r.title}</h3>
             </div>
             {r.clauseText && <Excerpt className="mt-4" page={r.page} text={r.clauseText} />}
+            <p className="mt-2 text-xs text-muted">Evidence: {r.evidenceStrength === 'strong' ? 'Strong — rule matched and passage verified' : r.evidenceStrength === 'verified_quote' ? 'Passage verified in the document' : 'Needs manual verification'}</p>
             {r.explanation && <p className="mt-4 text-[14.5px]">{r.explanation}</p>}
             {r.recommendation && <p className="mt-2 text-[14.5px]"><b>What to do:</b> {r.recommendation}</p>}
           </li>
@@ -155,7 +200,7 @@ export default function DocumentDetail() {
     try {
       await documentService.remove(id);
       toast.success('Document deleted.');
-      navigate('/documents', { replace: true });
+      navigate('/app/documents', { replace: true });
     } catch (err) {
       toast.error(errorMessage(err));
       setDeleting(false);
@@ -167,7 +212,7 @@ export default function DocumentDetail() {
   if (error) return (
     <div className="panel p-8 text-center">
       <h1 className="text-xl">{error}</h1>
-      <Link to="/documents" className="btn-primary mt-4">Back to documents</Link>
+      <Link to="/app/documents" className="btn-primary mt-4">Back to documents</Link>
     </div>
   );
   if (!doc) return <SectionLoader />;
@@ -178,7 +223,7 @@ export default function DocumentDetail() {
 
   return (
     <div className="space-y-6">
-      <Link to="/documents" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink"><ArrowLeft className="h-4 w-4" aria-hidden /> Documents</Link>
+      <Link to="/app/documents" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink"><ArrowLeft className="h-4 w-4" aria-hidden /> Documents</Link>
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
@@ -192,9 +237,15 @@ export default function DocumentDetail() {
           {doc.status === 'failed' && <p className="mt-2 text-sm text-high">{doc.errorMessage}</p>}
         </div>
         <div className="flex flex-wrap gap-2">
-          {doc.status === 'ready' && <Link to={`/chat/${doc._id}`} className="btn-primary"><MessageSquare className="h-4 w-4" aria-hidden /> Ask questions</Link>}
+          {doc.status === 'ready' && <Link to={`/app/chat/${doc._id}`} className="btn-primary"><MessageSquare className="h-4 w-4" aria-hidden /> Ask questions</Link>}
           <button className="btn-secondary" onClick={run(() => documentService.download(doc._id, doc.originalName))}><Download className="h-4 w-4" aria-hidden /> Original</button>
-          {analyzed && <button className="btn-secondary" onClick={run(() => documentService.report(doc._id, doc.originalName))}><FileDown className="h-4 w-4" aria-hidden /> Export report</button>}
+          {analyzed && (
+            <div className="flex flex-wrap gap-2">
+              <button className="btn-secondary" onClick={run(() => documentService.report(doc._id, doc.originalName, 'md'))}><FileDown className="h-4 w-4" aria-hidden /> Markdown</button>
+              <button className="btn-secondary" onClick={run(() => documentService.report(doc._id, doc.originalName, 'pdf'))}>PDF</button>
+              <button className="btn-secondary" onClick={run(() => documentService.report(doc._id, doc.originalName, 'docx'))}>DOCX</button>
+            </div>
+          )}
           <button className="btn-ghost" onClick={() => setConfirmDelete(true)} aria-label="Delete document"><Trash2 className="h-4 w-4" /></button>
         </div>
       </header>
@@ -226,7 +277,7 @@ export default function DocumentDetail() {
             <button className="btn-ghost btn-sm" onClick={analyze} disabled={running}>{running && <Spinner />} Re-run analysis</button>
           </div>
           <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="pt-6">
-            {tab === 'summary' && <SummaryTab summary={analysis.summary} />}
+            {tab === 'summary' && <div className="space-y-6"><RiskScore analysis={analysis} /><SummaryTab summary={analysis.summary} /></div>}
             {tab === 'risks' && <RisksTab analysis={analysis} />}
             {tab === 'clauses' && <ClausesTab analysis={analysis} />}
           </div>

@@ -6,7 +6,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import { Spinner } from './Spinner.jsx';
 
 const ALLOWED = ['.pdf', '.docx', '.txt'];
-const MAX_MB = 15;
+const MAX_MB = 200;
 
 export default function UploadZone({ onUploaded, compact = false }) {
   const toast = useToast();
